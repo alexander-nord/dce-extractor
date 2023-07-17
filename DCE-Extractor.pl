@@ -1773,6 +1773,14 @@ sub VisDualCodingRegion
 
     }
 
+    for (my $group_id=1; $group_id<=$final_num_groups; $group_id++) {
+	while (length($FinalGroupNames[$group_id]) < $longest_name_len) {
+	    $FinalGroupNames[$group_id] = $FinalGroupNames[$group_id].' ';
+	}
+    }
+
+
+    # COULD IT BE?! WE'RE OPENING OUR OUTPUT FILE TO PRINT TO?!?!
     open(my $OutFile,'>>',$fname)
 	|| die "\n  ERROR:  File append open failed (VDCR:'$fname')\n\n";
 

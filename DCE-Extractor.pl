@@ -81,7 +81,7 @@ while (my $species = readdir($AllSpeciesDir)) {
     # and write them to a CSV file
     my $species_csv_name = $out_dirname.$species.'.csv';
     my $SpeciesCSV = OpenOutputFile($species_csv_name);
-    print $SpeciesCSV "Index, Gene, Group(s), Left Window, Right Window\n";
+    print $SpeciesCSV "Index, Gene, Group(s), Left Window, Right Window, Trans Ali Pct ID\n";
 
     
     # Hold onto the starting value of num_dces to determine if we recorded anything...
@@ -121,8 +121,8 @@ while (my $species = readdir($AllSpeciesDir)) {
 	    $gene_start_dce++;
 	    my $dce_fname = $species_out_dirname.$gene_start_dce.'.'.$gene.'.out';
 
-	    RecordWindowsToCSV($SpeciesCSV,$dce_fname);
 	    VisDualCodingRegion($dce_fname);
+	    RecordWindowsToCSV($SpeciesCSV,$dce_fname);
 
 	}
 	
@@ -792,12 +792,19 @@ sub ExtractDCEs
 	    # repped sequences, we're in a position to say which of these are
 	    # using the exact same content (with respect to the DCE of interest),
 	    # so let's link up anything that would be redundant.
+	    #
+	    # UPDATE: An obvious issue is that focal_rep_id==0 makes all sequences
+	    #         report as 'identical' -- for a quick fix I'm going to add a
+	    #         second flag 'IsUniqueSeq' that's either 1 or 0
+	    #
+	    my @IsGroupLeader;
 	    my @IsIdenticalTo;
 
 	    # We'll do a preliminary check for sequences that are identical to the
 	    # sequence of interest
 	    for (my $rep_id=0; $rep_id<$num_repped; $rep_id++) {
 
+		$IsGroupLeader[$rep_id] = 1;
 		$IsIdenticalTo[$rep_id] = 0;
 
 		next if ($rep_id == $focal_rep_id);
@@ -805,6 +812,7 @@ sub ExtractDCEs
 		if ($ReppedGenomeRanges[$rep_id] eq $ReppedGenomeRanges[$focal_rep_id]
 		    && $ReppedSeqStrs[$rep_id] eq $ReppedSeqStrs[$focal_rep_id]) {
 
+		    $IsGroupLeader[$rep_id] = 0;
 		    $IsIdenticalTo[$rep_id] = $focal_rep_id;
 		    
 		}
@@ -823,6 +831,7 @@ sub ExtractDCEs
 		    if ($ReppedGenomeRanges[$rep_id] eq $ReppedGenomeRanges[$comp_rep_id]
 			&& $ReppedSeqStrs[$rep_id] eq $ReppedSeqStrs[$comp_rep_id]) {
 
+			$IsGroupLeader[$rep_id] = 0;
 			$IsIdenticalTo[$rep_id] = $comp_rep_id;
 			last;
 
@@ -1109,10 +1118,11 @@ sub ExtractDCEs
 	    print $OutFile "\n\n";
 		
 	    my $group_number = 0;
-	    
+
+
 	    for (my $rep_id=0; $rep_id<$num_repped; $rep_id++) {
 
-		next if ($IsIdenticalTo[$rep_id]);
+		next if (!$IsGroupLeader[$rep_id]);
 		
 		$group_number++;
 		my $group_title = "> Group $group_number:";
@@ -1122,7 +1132,7 @@ sub ExtractDCEs
 
 		for (my $check_id=$rep_id+1; $check_id<$num_repped; $check_id++) {
 
-		    if ($IsIdenticalTo[$check_id] == $rep_id) {
+		    if (!$IsGroupLeader[$check_id] && $IsIdenticalTo[$check_id] == $rep_id) {
 			for (my $i=0; $i<length($group_title); $i++) {
 			    print $OutFile " ";
 			}
@@ -1301,21 +1311,19 @@ sub RecordWindowsToCSV
     my @WindowsInOrder;
 
     my $line = <$InFile>;
-    while (!eof($InFile)) {
+    while ($line !~ /^\s+Percents identity/) {
 
-	if ($line !~ /\> Group \d+/) {
+	if ($line !~ /\> Group (\d+)/) {
 	    $line = <$InFile>;
 	    next;
 	}
-
-	$line =~ /\> Group (\d+)/;
 	my $group = $1;
 
 	# Advance to the start of this group's alignment visualization
 	$line = <$InFile> while ($line !~ /Protein Seq\./);
 
 	my $group_nucl_str = '';
-	while (!eof($InFile) && $line =~ /Protein Seq\./) {
+	while ($line =~ /Protein Seq\./) {
 
 	    $line = <$InFile>; # Coding nucleotides
 
@@ -1325,9 +1333,6 @@ sub RecordWindowsToCSV
 	    $line = <$InFile>; # Translation
 	    $line = <$InFile>; # Blank Line 1
 	    $line = <$InFile>; # Blank Line 2
-
-	    last if (eof($InFile));
-
 	    $line = <$InFile>; # Blank Line 3  *or*  Protein Seq.
 	    
 	}
@@ -1426,17 +1431,40 @@ sub RecordWindowsToCSV
 	
     }
 
+    
+    # Before printing to the CSV, we'll also want to associate each window with
+    # its alignment percent identity
+    my %GroupToPctID;
+    while ($line !~ /^\s+Overlaid alignment/) {
+
+	if ($line !~ /Groups?\s+(\S+)\s+\:\=\s+(\S+)/) {
+	    $line = <$InFile>;
+	    next;
+	}
+	my $group  = $1;
+	my $pct_id = $2;
+
+	$GroupToPctID{$group} = $pct_id;
+
+	$line = <$InFile>;
+
+    }
+
 
     # Now we just need to write our windows out to the CSV!
     foreach my $window (@WindowsInOrder) {
 
 	next if (!$WindowToGroup{$window});
 
+	my $group = $WindowToGroup{$window};
+
+	my $pct_id = $GroupToPctID{$group};
+
 	$window =~ /^([^\&]+)\&([^\&]+)$/;
 	my $left  = $1;
 	my $right = $2;
 
-	print $CSV "$dce_index, $gene, $WindowToGroup{$window}, $left, $right\n";
+	print $CSV "$dce_index, $gene, $WindowToGroup{$window}, $left, $right, $pct_id\n";
 
 	$WindowToGroup{$window} = 0;
 	
@@ -1678,7 +1706,13 @@ sub VisDualCodingRegion
 
     # Before we output, we'll see how each of our mapped amino sequences
     # matches with the translated nucleotides...
+    my @GroupMatches;
+    my @GroupMismatches;
+    my @GroupPctsID;
     for (my $group_id=1; $group_id<=$num_groups; $group_id++) {
+
+	$GroupMatches[$group_id]    = 0;
+	$GroupMismatches[$group_id] = 0;
 
 	for (my $col=0; $col<$ali_len; $col++) {
 
@@ -1697,13 +1731,29 @@ sub VisDualCodingRegion
 		# Uppercase if we have a match (or nothing to compare),
 		# lowercase for a mismatch
 		if (!$trans_amino || $trans_amino eq uc($Ali[$group_id][$col])) {
+
 		    $Ali[$group_id][$col] = uc($Ali[$group_id][$col]); #    match
+
+		    $GroupMatches[$group_id]++;
+
 		} else {
+
 		    $Ali[$group_id][$col] = lc($Ali[$group_id][$col]); # mismatch
+
+		    $GroupMismatches[$group_id]++;
+
 		}
 		
 	    }
 
+	}
+
+	$GroupPctsID[$group_id] = int(1000.0 * $GroupMatches[$group_id] / ($GroupMatches[$group_id] + $GroupMismatches[$group_id])) / 10.0;
+	
+	$GroupPctsID[$group_id] = $GroupPctsID[$group_id].'.0' if ($GroupPctsID[$group_id] !~ /\.\d$/);
+	$GroupPctsID[$group_id] = $GroupPctsID[$group_id].'%';
+	while (length($GroupPctsID[$group_id]) < length('100.0%')) {
+	    $GroupPctsID[$group_id] = ' '.$GroupPctsID[$group_id];
 	}
 	
     }
@@ -1749,8 +1799,9 @@ sub VisDualCodingRegion
 	}
 	
     }
-    
 
+
+    my @FinalGroupPctsID;
 
     # Finally time to prep for output!  We'll want to figure out
     # the length of the longest group name for left-side buffering
@@ -1771,6 +1822,9 @@ sub VisDualCodingRegion
 	    $longest_name_len = length($group_name);
 	}
 
+	$group_name =~ /Groups?\s+(\d+)/;
+	$FinalGroupPctsID[$group_id] = $GroupPctsID[$1];
+
     }
 
     for (my $group_id=1; $group_id<=$final_num_groups; $group_id++) {
@@ -1788,7 +1842,12 @@ sub VisDualCodingRegion
     print $OutFile "\n\n-------------------------------------------------------";
     print $OutFile "-------------------------------------------------------\n\n";
 
-    print $OutFile "\n   Overlaid alignment of the dual-coding regions for each group\n\n";
+    print $OutFile "\n   Percents identity for alignments of translated dual-coding nucleotides to group aminos\n\n";
+    for (my $meta_group_id=1; $meta_group_id<=$final_num_groups; $meta_group_id++) {
+	print $OutFile "   $FinalGroupNames[$meta_group_id]:= $FinalGroupPctsID[$meta_group_id]\n";
+    }
+    
+    print $OutFile "\n\n\n   Overlaid alignment of the dual-coding regions for each group\n";
 
     my $line_len = 60;
     for (my $line_start = 0; $line_start < $ali_len; $line_start += $line_len) {

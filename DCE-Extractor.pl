@@ -143,7 +143,6 @@ while (my $species = readdir($AllSpeciesDir)) {
 closedir($AllSpeciesDir);
 
 
-# One last thing:
 # If we had any gappy mappings (indicating low-quality), report them
 if (scalar(keys %GappyMappingSeqs)) {
 
@@ -1301,9 +1300,10 @@ sub RecordWindowsToCSV
     my $CSV = shift;
     my $in_filename = shift;
 
-    $in_filename =~ /\/(\d+)\.([^\/]+)\.out$/;
-    my $dce_index = $1;
-    my $gene = $2;
+    $in_filename =~ /\/(\S+)\/(\d+)\.([^\/]+)\.out$/;
+    my $species = $1;
+    my $dce_index = $2;
+    my $gene = $3;
 
     my $InFile = OpenInputFile($in_filename);
 
@@ -1441,10 +1441,19 @@ sub RecordWindowsToCSV
 	    $line = <$InFile>;
 	    next;
 	}
+	
 	my $group  = $1;
 	my $pct_id = $2;
 
+	$group =~ s/\,/\//g;
+
 	$GroupToPctID{$group} = $pct_id;
+
+	# We'll also want all individual groups to have their percents ID
+	# recorded, in case they don't group w.r.t. 32-nucleotide windows
+	foreach my $subgroup (split(/\//,$group)) {
+	    $GroupToPctID{$subgroup} = $pct_id;
+	}
 
 	$line = <$InFile>;
 
@@ -1458,13 +1467,28 @@ sub RecordWindowsToCSV
 
 	my $group = $WindowToGroup{$window};
 
-	my $pct_id = $GroupToPctID{$group};
+
+	# Do we have funniness with the boundary def.s?
+	my $pct_id;
+	if (!$GroupToPctID{$group}) {
+
+	    $group =~ /^(\d+)\//;
+	    my $lead_fam = $1;
+
+	    $pct_id = $GroupToPctID{$lead_fam};
+
+	} else {
+
+	    $pct_id = $GroupToPctID{$group};
+
+	}
+
 
 	$window =~ /^([^\&]+)\&([^\&]+)$/;
 	my $left  = $1;
 	my $right = $2;
 
-	print $CSV "$dce_index, $gene, $WindowToGroup{$window}, $left, $right, $pct_id\n";
+	print $CSV "$dce_index, $gene, $group, $left, $right, $pct_id\n";
 
 	$WindowToGroup{$window} = 0;
 	
@@ -1746,6 +1770,12 @@ sub VisDualCodingRegion
 		
 	    }
 
+	}
+
+	# DEBUGGING
+	if ($GroupMatches[$group_id] + $GroupMismatches[$group_id] == 0) {
+	    print "\n  APPARENT MAPPING ERROR: $fname\n\n";
+	    return;
 	}
 
 	$GroupPctsID[$group_id] = int(1000.0 * $GroupMatches[$group_id] / ($GroupMatches[$group_id] + $GroupMismatches[$group_id])) / 10.0;

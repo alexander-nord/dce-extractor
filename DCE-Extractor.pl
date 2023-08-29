@@ -21,6 +21,7 @@ sub ExtractDCEs;
 sub RemoveEmptyColumns;
 sub RecordWindowsToCSV;
 sub VisDualCodingRegion;
+sub CheckForMidExonIntrons;
 sub DumpSpeciesGeneData;
 
 
@@ -66,6 +67,9 @@ my %GappyMappingSeqs; # Global hash for sequences that have gappy mappings (from
 my $num_dces = 0;
 
 my $all_species_dirname = ConfirmDirectory($mirage_results_dirname.'Species-MSAs');
+
+my $mei_fname = $out_dirname.'Mid-Exon-Intron-Warnings.out';
+my $MEIFile = OpenOutputFile($mei_fname);
 
 my $AllSpeciesDir = OpenDirectory($all_species_dirname);
 while (my $species = readdir($AllSpeciesDir)) {
@@ -123,6 +127,7 @@ while (my $species = readdir($AllSpeciesDir)) {
 
 	    VisDualCodingRegion($dce_fname);
 	    RecordWindowsToCSV($SpeciesCSV,$dce_fname);
+	    CheckForMidExonIntrons($MEIFile,$dce_fname);
 
 	}
 	
@@ -141,6 +146,9 @@ while (my $species = readdir($AllSpeciesDir)) {
 
 }
 closedir($AllSpeciesDir);
+
+close($MEIFile);
+if (!(-s $mei_fname)) { RunSystemCommand("rm $mei_fname"); }
 
 
 # If we had any gappy mappings (indicating low-quality), report them
@@ -1951,6 +1959,99 @@ sub VisDualCodingRegion
     
 }
 
+
+
+
+
+
+
+
+#############################################################################
+#
+#  Function:  CheckForMidExonIntrons
+#
+#  About:  This subroutine checks whether the dual coding region is created
+#          by intron insertion w.r.t. genomic sequence that is exonic in one
+#          of the other sequences (indicating that the reported left/right
+#          window may need adjustment)
+#
+sub CheckForMidExonIntrons
+{
+    my $MidExonIntronFile = shift;
+    my $dce_filename = shift;
+    
+    $dce_filename =~ /\/([^\/]+)\/(\d+)\.([^\/]+)\.out$/;
+    my $species = $1;
+    my $dce_index = $2;
+    my $gene = $3;
+
+    my $InFile = OpenInputFile($dce_filename);
+
+    while (my $line = <$InFile>) { last if ($line =~ /Overlaid alignment/); }
+
+    my @GroupMSA;
+    my %GroupNamesToIDs;
+    my $num_groups = 0;
+    while (my $line = <$InFile>) {
+
+	$line =~ s/\n|\r//g;
+	next if ($line !~ /Groups?\s+(\S+)    (.+)$/);
+
+	my $group_name = $1;
+	my $ali_chars  = $2;
+
+	my $group_id;
+	if (!$GroupNamesToIDs{$group_name}) {
+	    $GroupNamesToIDs{$group_name} = ++$num_groups;
+	    $group_id = $num_groups;
+	} else {
+	    $group_id = $GroupNamesToIDs{$group_name};
+	}
+
+	my $group_msa_len;
+	if ($GroupMSA[$group_id]) {
+	    $group_msa_len = scalar(@{$GroupMSA[$group_id]});
+	} else {
+	    $group_msa_len = 0;
+	}
+
+	foreach my $char (split(//,$ali_chars)) {
+	    if ($char ne '/') {
+		$GroupMSA[$group_id][$group_msa_len++] = $char;
+	    }
+	}
+	
+    }
+
+    my $multi_frame_observed = 0;
+    for (my $group_id=1; $group_id<=$num_groups; $group_id++) {
+
+	my @FrameUsed;
+	$FrameUsed[0] = 0;
+	$FrameUsed[1] = 0;
+	$FrameUsed[2] = 0;
+	
+	for (my $pos=0; $pos<scalar(@{$GroupMSA[$group_id]}); $pos++) {
+	    if ($GroupMSA[$group_id][$pos] =~ /[A-Za-z]/) {
+		$FrameUsed[$pos % 3] = 1;
+	    }
+	}
+
+	my $frame_sum = $FrameUsed[0] + $FrameUsed[1] + $FrameUsed[2];
+
+	if ($frame_sum > 1) {
+	    $multi_frame_observed = 1;
+	    last;
+	}
+	
+    }
+    
+    close($InFile);
+
+    print $MidExonIntronFile "$species: $dce_index ($gene)\n"
+	if ($multi_frame_observed);    
+    
+}
 
 
 

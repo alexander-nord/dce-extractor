@@ -1987,7 +1987,43 @@ sub CheckForMidExonIntrons
 
     my $InFile = OpenInputFile($dce_filename);
 
-    while (my $line = <$InFile>) { last if ($line =~ /Overlaid alignment/); }
+    while (my $line = <$InFile>) { 
+	last if ($line =~ /Percents identity/); 
+    }
+
+
+    my %GroupNamesToFormatted;
+    my $longest_name_len = 0;
+    while (my $line = <$InFile>) {
+
+	last if ($line =~ /Overlaid alignment/);
+
+	if ($line =~ /Groups?\s+(\S+)/) {
+
+	    my $group_name = $1;
+	    if (length($group_name) > $longest_name_len) {
+		$longest_name_len = length($group_name);
+	    }
+
+	    $GroupNamesToFormatted{$group_name} = $group_name;
+
+	}
+
+    }
+
+    # We may need to do some special spacing to make sure we start
+    # grabbing characters at the right place to determine frame
+    #
+    foreach my $group_name (keys %GroupNamesToFormatted) {
+
+	my $formatted_name = $GroupNamesToFormatted{$group_name};
+	while (length($formatted_name) < $longest_name_len) {
+	    $formatted_name = $formatted_name.' ';
+	}
+
+	$GroupNamesToFormatted{$group_name} = $formatted_name;
+
+    }
 
     my @GroupMSA;
     my %GroupNamesToIDs;
@@ -1995,10 +2031,12 @@ sub CheckForMidExonIntrons
     while (my $line = <$InFile>) {
 
 	$line =~ s/\n|\r//g;
-	next if ($line !~ /Groups?\s+(\S+)    (.+)$/);
 
-	my $group_name = $1;
-	my $ali_chars  = $2;
+	next if ($line !~ /Groups?\s+(\S+)/);
+	my $group_name = $GroupNamesToFormatted{$1};
+
+	$line =~ /Groups?\s+$group_name    (.+)$/;
+	my $ali_chars = $1;
 
 	my $group_id;
 	if (!$GroupNamesToIDs{$group_name}) {

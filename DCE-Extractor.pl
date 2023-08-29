@@ -170,24 +170,23 @@ if (scalar(keys %GappyMappingSeqs)) {
 	    $GappySeqsByIndex{$dce_index} = $seq_name;
 	}
 
-	$max_gappy_index = $dce_index if ($dce_index > $max_gappy_index);
-	
     }
 
-    my $GappyOutFile = OpenOutputFile($out_dirname.'Gappy-Sequences.out');
+    my $GappyOutFile = OpenOutputFile($out_dirname.'Gappy-Alignment-Warnings.out');
     foreach my $dce_index (sort { $a <=> $b } keys %GappySeqsByIndex) {
 
-	foreach my $seq_name (split(/\&/,$GappySeqsByIndex{$dce_index})) {
+	my $seq_name = $GappySeqsByIndex{$dce_index};
+	$seq_name =~ s/\&.+$//;
+	$seq_name =~ /^([^\|]+)\|([^\|]+)\|/;
 
-	    my $fmtd_index = $dce_index;
-	    while (length($fmtd_index) < length($max_gappy_index)) {
-		$fmtd_index = $fmtd_index.' ';
-	    }
-	    
-	    print $GappyOutFile "$dce_index : $seq_name\n";
-	    
-	}
+	my $species = lc($1);
+	my $gene_fam_list = lc($2);
+
+	$gene_fam_list =~ /^([^\/]+)/;
+	my $gene_fam = $1;
 	
+	print $GappyOutFile "$species: $dce_index ($gene_fam)\n";
+	    
     }
     close($GappyOutFile);
     

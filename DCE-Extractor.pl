@@ -22,6 +22,9 @@ sub RemoveEmptyColumns;
 sub RecordWindowsToCSV;
 sub VisDualCodingRegion;
 sub CheckForMidExonIntrons;
+sub GenStrongWindowFastas;
+
+# DEBUGGING OUTPUT
 sub DumpSpeciesGeneData;
 
 
@@ -85,7 +88,7 @@ while (my $species = readdir($AllSpeciesDir)) {
     # and write them to a CSV file
     my $species_csv_name = $out_dirname.$species.'.csv';
     my $SpeciesCSV = OpenOutputFile($species_csv_name);
-    print $SpeciesCSV "Index, Gene, Group(s), Left Window, Right Window, Trans Ali Pct ID\n";
+    print $SpeciesCSV "Index, Gene, Group(s), Frame(s), Left Window, Right Window, Trans Ali Pct ID\n";
 
     
     # Hold onto the starting value of num_dces to determine if we recorded anything...
@@ -126,8 +129,8 @@ while (my $species = readdir($AllSpeciesDir)) {
 	    my $dce_fname = $species_out_dirname.$gene_start_dce.'.'.$gene.'.out';
 
 	    VisDualCodingRegion($dce_fname);
+	    CheckForMidExonIntrons($MEIFile,$dce_fname); # This also records frame num
 	    RecordWindowsToCSV($SpeciesCSV,$dce_fname);
-	    CheckForMidExonIntrons($MEIFile,$dce_fname);
 
 	}
 	
@@ -191,6 +194,10 @@ if (scalar(keys %GappyMappingSeqs)) {
     close($GappyOutFile);
     
 }
+
+
+# Now, let's make a FASTA file!
+GenStrongWindowFastas($out_dirname);
 
 
 1;
@@ -1442,17 +1449,20 @@ sub RecordWindowsToCSV
     # Before printing to the CSV, we'll also want to associate each window with
     # its alignment percent identity
     my %GroupToPctID;
+    my %GroupToFrame;
     while ($line !~ /^\s+Overlaid alignment/) {
 
-	if ($line !~ /Groups?\s+(\S+)\s+\:\=\s+(\S+)/) {
+	if ($line !~ /Groups?\s+(\S+)\s+\:\=\s+(\S+)\s+\[frames?\:([^\]]+)\]/) {
 	    $line = <$InFile>;
 	    next;
 	}
 	
 	my $group  = $1;
 	my $pct_id = $2;
+	my $frame  = $3;
 
 	$group =~ s/\,/\//g;
+	$frame =~ s/\,/\//g;
 
 	$GroupToPctID{$group} = $pct_id;
 
@@ -1460,6 +1470,7 @@ sub RecordWindowsToCSV
 	# recorded, in case they don't group w.r.t. 32-nucleotide windows
 	foreach my $subgroup (split(/\//,$group)) {
 	    $GroupToPctID{$subgroup} = $pct_id;
+	    $GroupToFrame{$subgroup} = $frame;
 	}
 
 	$line = <$InFile>;
@@ -1473,7 +1484,7 @@ sub RecordWindowsToCSV
 	next if (!$WindowToGroup{$window});
 
 	my $group = $WindowToGroup{$window};
-
+	my $frame = $WindowToGroup{$window};
 
 	# Do we have funniness with the boundary def.s?
 	my $pct_id;
@@ -1495,7 +1506,7 @@ sub RecordWindowsToCSV
 	my $left  = $1;
 	my $right = $2;
 
-	print $CSV "$dce_index, $gene, $group, $left, $right, $pct_id\n";
+	print $CSV "$dce_index, $gene, $group, $frame, $left, $right, $pct_id\n";
 
 	$WindowToGroup{$window} = 0;
 	
@@ -2061,24 +2072,23 @@ sub CheckForMidExonIntrons
     }
 
     my $multi_frame_observed = 0;
+    my @FramesUsed;
     for (my $group_id=1; $group_id<=$num_groups; $group_id++) {
 
-	my @FrameUsed;
-	$FrameUsed[0] = 0;
-	$FrameUsed[1] = 0;
-	$FrameUsed[2] = 0;
+	$FramesUsed[$group_id][0] = 0;
+	$FramesUsed[$group_id][1] = 0;
+	$FramesUsed[$group_id][2] = 0;
 	
 	for (my $pos=0; $pos<scalar(@{$GroupMSA[$group_id]}); $pos++) {
 	    if ($GroupMSA[$group_id][$pos] =~ /[A-Za-z]/) {
-		$FrameUsed[$pos % 3] = 1;
+		$FramesUsed[$group_id][$pos % 3] = 1;
 	    }
 	}
 
-	my $frame_sum = $FrameUsed[0] + $FrameUsed[1] + $FrameUsed[2];
-
-	if ($frame_sum > 1) {
+	if ($FramesUsed[$group_id][0] +
+	    $FramesUsed[$group_id][1] +
+	    $FramesUsed[$group_id][2] > 1) {
 	    $multi_frame_observed = 1;
-	    last;
 	}
 	
     }
@@ -2086,9 +2096,179 @@ sub CheckForMidExonIntrons
     close($InFile);
 
     print $MidExonIntronFile "$species: $dce_index ($gene)\n"
-	if ($multi_frame_observed);    
+	if ($multi_frame_observed);
+
+
+    # The last thing that we'll do is add the frames used to the dce info file
+    my $tmp_filename = $dce_filename;
+    $tmp_filename =~ s/\.out$/\.tmp/;
+
+    $InFile = OpenInputFile($dce_filename);
+    my $TmpOutFile = OpenOutputFile($tmp_filename);
+    while (my $line = <$InFile>) {
+
+	$line =~ s/\n|\r//g;
+
+	if ($line =~ /Groups?\s+(\S+)    \:\=\s+\S+\%/) {
+
+	    my $group_id = $GroupNamesToIDs{$1};
+
+	    my $frames_used = '';
+	    for (my $frame=0; $frame<3; $frame++) {
+		if ($FramesUsed[$group_id][$frame]) {
+		    $frames_used = $frames_used.','.($frame+1);
+		}
+	    }
+	    $frames_used =~ s/^\,//;
+
+	    $line = $line.'  [frame';
+	    $line = $line.'s' if ($frames_used =~ /\,/);
+	    $line = $line.':'.$frames_used.']';
+
+	}
+
+	print $TmpOutFile "$line\n";
+	
+    }
+    close($InFile);
+    close($TmpOutFile);
+
+    RunSystemCommand("mv \"$tmp_filename\" \"$dce_filename\"");
     
 }
+
+
+
+
+
+
+
+
+#############################################################################
+#
+#  Function: GenStrongWindowFastas
+#
+#  About: This function compiles a FASTA file for each species, containing
+#         the left and/or right windows nucleotide windows.  It only does this
+#         for sequences from DCE indices that are not implicated in either
+#         'Gappy-Alignment-Warnings' or 'Mid-Exon-Intron-Warnings'
+#
+sub GenStrongWindowFastas
+{
+    my $dirname = shift;
+
+    my %WeakDCEIndices;
+
+    # DCE indices where there are low-quality mappings
+    if (-e($dirname.'Gappy-Alignment-Warnings.out')) {
+
+	my $InFile = OpenInputFile($dirname.'Gappy-Alignment-Warnings.out');
+
+	while (my $line = <$InFile>) {
+	    if ($line =~ /\: (\d+) /) {
+		$WeakDCEIndices{$1} = 1;
+	    }
+	}
+	close($InFile);
+	
+    }
+
+    # DCE indices where the alt. frame has a funny look...
+    if (-e ($dirname.'Mid-Exon-Intron-Warnings.out')) {
+
+	my $InFile = OpenInputFile($dirname.'Mid-Exon-Intron-Warnings.out');
+
+	while (my $line = <$InFile>) {
+	    if ($line =~ /\: (\d+) /) {
+		$WeakDCEIndices{$1} = 1;
+	    }
+	}
+	close($InFile);
+	
+    }
+
+    # Now let's pull the right/left windows!  We'll add an extra check for
+    # alignments where there's mapping identity less than 95%, since that
+    # would imply the mapping isn't strong enough to trust for RNA-Seq verification
+    my $ResultsDir = OpenDirectory($dirname);
+    while (my $in_filename = readdir($ResultsDir)) {
+
+	next if ($in_filename !~ /^(\S+)\.csv$/);
+	my $species = $1;
+
+	$in_filename     = $dirname.$in_filename;
+	my $out_filename = $dirname.$species.'.fa';
+
+	my $InFile  = OpenInputFile($in_filename);
+	my $OutFile = OpenOutputFile($out_filename);
+
+	my $current_dce_index = 0;
+	my $num_current_index_seqs = 0;
+	my @IndexLines;
+	while (my $line = <$InFile>) {
+
+	    next if ($line !~ /^(\d+)\,/);
+	    my $next_dce_index = $1;
+
+	    if ($next_dce_index != $current_dce_index) {
+
+		# Wooo! let's write this collection of seqs!
+		if ($num_current_index_seqs > 1) {
+		    for (my $i=0; $i<$num_current_index_seqs; $i++) {
+
+			my $index_line = $IndexLines[$i];
+			$index_line =~ /^[^\,]+\, ([^\,]+)\, ([^\,]+)\, ([^\,]+)\, ([^\,]+)\, ([^\,]+)\,/;
+			my $gene  = $1;
+			my $group = $2;
+			my $frame = $3;
+			my $left  = $4;
+			my $right = $5;
+
+			if ($left !~ /Terminal|Insufficient/) {
+
+			    my $seq_name = '>'.$current_dce_index.'_'.$gene.'_'.$group;
+			    $seq_name = $seq_name.'_frame'.$frame.'_left';
+			    
+			    print $OutFile "$seq_name\n$left\n";
+			    
+			}
+			
+			if ($right !~ /Terminal|Insufficient/) {
+			    
+			    my $seq_name = '>'.$current_dce_index.'_'.$gene.'_'.$group;
+			    $seq_name = $seq_name.'_frame'.$frame.'_right';
+
+			    print $OutFile "$seq_name\n$right\n";
+			    
+			}
+			
+		    }
+		}
+
+		$current_dce_index = $next_dce_index;
+		$num_current_index_seqs = 0;
+		
+	    } else {
+
+		$line =~ /([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
+		my $left   = $1;
+		my $right  = $2;
+		my $pct_id = $3;
+
+		if ($pct_id > 95.0 && !($left =~ /Terminal|Insufficient/ && $right =~ /Terminal|Insufficient/)) {
+		    $IndexLines[$num_current_index_seqs++] = $line;
+		}
+		
+	    }
+		
+	}
+	
+    }
+    closedir($ResultsDir);
+    
+    
+}
+
 
 
 

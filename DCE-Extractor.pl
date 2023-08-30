@@ -2251,17 +2251,15 @@ sub GenStrongWindowFastas
 		$current_dce_index = $next_dce_index;
 		$num_current_index_seqs = 0;
 		
-	    } else {
+	    }
 
-		$line =~ /([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
-		my $left   = $1;
-		my $right  = $2;
-		my $pct_id = $3;
-
-		if ($pct_id > 95.0 && !($left =~ /Terminal|Insufficient/ && $right =~ /Terminal|Insufficient/)) {
-		    $IndexLines[$num_current_index_seqs++] = $line;
-		}
-		
+	    $line =~ /([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
+	    my $left   = $1;
+	    my $right  = $2;
+	    my $pct_id = $3;
+	    
+	    if ($pct_id > 95.0 && !($left =~ /Terminal|Insufficient/ && $right =~ /Terminal|Insufficient/)) {
+		$IndexLines[$num_current_index_seqs++] = $line;
 	    }
 		
 	}

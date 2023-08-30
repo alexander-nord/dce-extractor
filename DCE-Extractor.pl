@@ -2168,7 +2168,7 @@ sub GenStrongWindowFastas
 	my $InFile = OpenInputFile($dirname.'Gappy-Alignment-Warnings.out');
 
 	while (my $line = <$InFile>) {
-	    if ($line =~ /\: (\d+) /) {
+	    if ($line =~ /\:\s+(\d+)\s+/) {
 		$WeakDCEIndices{$1} = 1;
 	    }
 	}
@@ -2182,7 +2182,7 @@ sub GenStrongWindowFastas
 	my $InFile = OpenInputFile($dirname.'Mid-Exon-Intron-Warnings.out');
 
 	while (my $line = <$InFile>) {
-	    if ($line =~ /\: (\d+) /) {
+	    if ($line =~ /\:\s+(\d+)\s+/) {
 		$WeakDCEIndices{$1} = 1;
 	    }
 	}
@@ -2217,6 +2217,7 @@ sub GenStrongWindowFastas
 
 		# Wooo! let's write this collection of seqs!
 		if ($num_current_index_seqs > 1) {
+
 		    for (my $i=0; $i<$num_current_index_seqs; $i++) {
 
 			my $index_line = $IndexLines[$i];
@@ -2253,12 +2254,12 @@ sub GenStrongWindowFastas
 		
 	    }
 
-	    $line =~ /([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
+	    $line =~ /\, ([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
 	    my $left   = $1;
 	    my $right  = $2;
 	    my $pct_id = $3;
 	    
-	    if ($pct_id > 95.0 && !($left =~ /Terminal|Insufficient/ && $right =~ /Terminal|Insufficient/)) {
+	    if ($pct_id > 95.0 && ($left !~ /Terminal|Insufficient/ || $right !~ /Terminal|Insufficient/)) {
 		$IndexLines[$num_current_index_seqs++] = $line;
 	    }
 		

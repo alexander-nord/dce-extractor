@@ -2213,11 +2213,11 @@ sub GenStrongWindowFastas
 	    next if ($line !~ /^(\d+)\,/);
 	    my $next_dce_index = $1;
 
-	    if ($next_dce_index != $current_dce_index && !$WeakDCEIndices{$current_dce_index}) {
+	    if ($next_dce_index != $current_dce_index) {
 
 		# Wooo! let's write this collection of seqs!
-		if ($num_current_index_seqs > 1) {
-
+		if ($num_current_index_seqs > 1 && !$WeakDCEIndices{$current_dce_index}) {
+		    
 		    for (my $i=0; $i<$num_current_index_seqs; $i++) {
 
 			my $index_line = $IndexLines[$i];
@@ -2253,7 +2253,7 @@ sub GenStrongWindowFastas
 		$num_current_index_seqs = 0;
 		
 	    }
-
+	    
 	    $line =~ /\, ([^\,]+)\, ([^\,]+)\, ([^\,]+)\%\s*$/;
 	    my $left   = $1;
 	    my $right  = $2;
@@ -2262,7 +2262,7 @@ sub GenStrongWindowFastas
 	    if ($pct_id > 95.0 && ($left !~ /Terminal|Insufficient/ || $right !~ /Terminal|Insufficient/)) {
 		$IndexLines[$num_current_index_seqs++] = $line;
 	    }
-		
+	    
 	}
 	
     }

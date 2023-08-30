@@ -2213,7 +2213,7 @@ sub GenStrongWindowFastas
 	    next if ($line !~ /^(\d+)\,/);
 	    my $next_dce_index = $1;
 
-	    if ($next_dce_index != $current_dce_index) {
+	    if ($next_dce_index != $current_dce_index && !$WeakDCEIndices{$current_dce_index}) {
 
 		# Wooo! let's write this collection of seqs!
 		if ($num_current_index_seqs > 1) {

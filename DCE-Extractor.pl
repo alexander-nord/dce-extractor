@@ -2112,7 +2112,7 @@ sub CheckForMidExonIntrons
 
 	$line =~ s/\n|\r//g;
 
-	if ($line =~ /Groups?\s+(\S+)    \:\=\s+\S+\%/) {
+	if ($line =~ /Groups?\s+(\S+\s*)    \:\=\s+\S+\%/) {
 
 	    my $group_id = $GroupNamesToIDs{$1};
 

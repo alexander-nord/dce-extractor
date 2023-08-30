@@ -1465,6 +1465,7 @@ sub RecordWindowsToCSV
 	$frame =~ s/\,/\//g;
 
 	$GroupToPctID{$group} = $pct_id;
+	$GroupToFrame{$group} = $frame;
 
 	# We'll also want all individual groups to have their percents ID
 	# recorded, in case they don't group w.r.t. 32-nucleotide windows
@@ -1484,20 +1485,22 @@ sub RecordWindowsToCSV
 	next if (!$WindowToGroup{$window});
 
 	my $group = $WindowToGroup{$window};
-	my $frame = $WindowToGroup{$window};
 
 	# Do we have funniness with the boundary def.s?
 	my $pct_id;
+	my $frame;
 	if (!$GroupToPctID{$group}) {
 
 	    $group =~ /^(\d+)\//;
 	    my $lead_fam = $1;
 
 	    $pct_id = $GroupToPctID{$lead_fam};
+	    $frame  = $GroupToFrame{$lead_fam};
 
 	} else {
 
 	    $pct_id = $GroupToPctID{$group};
+	    $frame  = $GroupToFrame{$group};
 
 	}
 

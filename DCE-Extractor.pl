@@ -2369,10 +2369,7 @@ sub GenMidExonIntronFastas
 	my $longest_group_name_len = 0;
 	while (my $dce_line = <$DCEFile>) {
 
-	    if ($dce_line =~ /Overlaid Alignment/) {
-		$dce_line = <$DCEFile>; # blank
-		last;
-	    }
+	    last if ($dce_line =~ /Overlaid Alignment/);
 
 	    if ($dce_line =~ /Groups?\s+(\S+)/) {
 
@@ -2404,14 +2401,13 @@ sub GenMidExonIntronFastas
 	# Next up, we'll build up an MSA representing the group alignment
 	my @GroupLeadNums;
 	my @GroupMSAStrs;
-	my $num_groups;
+	my $num_groups = -1;
 	my $full_ali_nucls = '';
 	while (my $dce_line = <$DCEFile>) {
 
-	    last if ($dce_line !~ /Groups?/);
-	    
+	    next if ($dce_line !~ /Groups?/);
+
 	    $num_groups = 0;
-	    
 	    while ($dce_line =~ /Groups?\s+(\S+)/) {
 
 		my $full_group_name = $1;
@@ -2459,6 +2455,12 @@ sub GenMidExonIntronFastas
 	# That's it for you, DCE File!
 	close($DCEFile);
 
+	# Quick sanity check...
+	if ($num_groups == -1) {
+	    print "\n  WARNING: No groups found in alignment for $species $gene\n\n";
+	    next;
+	}
+	
 	my @FullAliNucls = split(//,$full_ali_nucls);
 	
 	# For each multi-frame group, find the index of the last amino acid before

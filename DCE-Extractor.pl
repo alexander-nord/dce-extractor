@@ -23,6 +23,7 @@ sub RecordWindowsToCSV;
 sub VisDualCodingRegion;
 sub CheckForMidExonIntrons;
 sub GenStrongWindowFastas;
+sub GenMidExonIntronFastas;
 
 # DEBUGGING OUTPUT
 sub DumpSpeciesGeneData;
@@ -196,9 +197,9 @@ if (scalar(keys %GappyMappingSeqs)) {
 }
 
 
-# Now, let's make a FASTA file!
+# Now, let's make some FASTA files!
 GenStrongWindowFastas($out_dirname);
-
+GenMidExonIntronFastas($out_dirname);
 
 1;
 
@@ -2270,6 +2271,398 @@ sub GenStrongWindowFastas
     
     
 }
+
+
+
+
+
+
+
+
+
+
+#############################################################################
+#
+#  Function: GenMidExonIntronFastas
+#
+sub GenMidExonIntronFastas
+{
+    my $result_dirname = shift;
+
+    my $mei_fname = $result_dirname.'Mid-Exon-Intron-Warnings.out';
+    return if (!(-e $mei_fname));
+
+    my $out_dirname = CreateDirectory($result_dirname.'Mid-Exon-Intron-FASTAs');
+    my $num_outputs = 0;
+
+    my $MEIFile = OpenInputFile($mei_fname);
+    while (my $mei_line = <$MEIFile>) {
+
+	next if ($mei_line !~ /^(\S+)\:\s+(\d+)\s+\((\S+)\)/);
+
+	my $species = $1;
+	my $dce_index = $2;
+	my $gene = $3;
+
+	my $dce_fname = $result_dirname.$species.'/'.$dce_index.'.'.$gene.'.out';
+
+	my $DCEFile = OpenInputFile($dce_fname);
+
+	my %GroupToAli;
+	while (my $dce_line = <$DCEFile>) {
+
+	    last if ($dce_line =~ /Percents identity/);
+
+	    next if ($dce_line !~ /\> Group (\d+)\:/);
+	    my $group_id = $1;
+
+	    $dce_line = <$DCEFile>; # blank
+	    $dce_line = <$DCEFile>; # Genome Ranges
+	    $dce_line = <$DCEFile>; # blank
+	    $dce_line = <$DCEFile>; # blank
+	    
+	    $dce_line = <$DCEFile>; # * Protein Seq.
+	    $dce_line =~ s/\n|\r//g;
+
+	    my $protein_ali_str = '';
+	    my $nucl_ali_str    = '';
+
+	    while ($dce_line =~ /Protein Seq\.  \:   (.*)$/) {
+
+		$protein_ali_str = $protein_ali_str.$1;
+
+		$dce_line = <$DCEFile>; # * Coding Nucl.s
+		$dce_line =~ s/\n|\r//g;
+
+		$dce_line =~ /Coding Nucl\.s \:   (.*)$/;
+		
+		$nucl_ali_str = $nucl_ali_str.$1;
+
+		$dce_line = <$DCEFile>; # Translation
+		$dce_line = <$DCEFile>; # blank
+		$dce_line = <$DCEFile>; # blank
+
+		$dce_line = <$DCEFile>; # * Protein Seq.?
+		$dce_line =~ s/\n|\r//g;
+		
+	    }
+
+	    $protein_ali_str =~ s/^[^\|]*\|//;
+	    $nucl_ali_str    =~ s/^[^\|]*\|//;
+
+	    $protein_ali_str =~ s/\|.*$//;
+	    $nucl_ali_str    =~ s/\|.*$//;
+
+	    $protein_ali_str =~ s/\///g;
+	    $nucl_ali_str    =~ s/\///g;
+
+	    $GroupToAli{$group_id} = $protein_ali_str.'&'.$nucl_ali_str;
+	    
+	}
+
+	
+	# Now that we have the alignments for each group, we can see which groups
+	# end up using multiple reading frames (i.e., have an intron in the middle
+	# of another sequence's exon).
+	my %GroupIsMultiFrame;
+	my %GroupLeaderToFull;
+	my $longest_group_name_len = 0;
+	while (my $dce_line = <$DCEFile>) {
+
+	    if ($dce_line =~ /Overlaid Alignment/) {
+		$dce_line = <$DCEFile>; # blank
+		last;
+	    }
+
+	    if ($dce_line =~ /Groups?\s+(\S+)/) {
+
+		my $group_name_len = length($1);
+		if ($group_name_len > $longest_group_name_len) {
+		    $longest_group_name_len = $group_name_len;
+		}
+		
+		# Capture the lead group for any multi-frames
+		if ($dce_line !~ /Groups?\s+(\S+)\s+\:\=\s+\S+\s+\[frames/) {
+
+		    my $full_group = $1;
+
+		    $full_group =~ /^(\d+)/;
+		    my $group_lead = $1;
+
+		    $full_group =~ s/\,/\//g;
+
+		    $GroupIsMultiFrame{$group_lead} = 1;
+		    $GroupLeaderToFull{$group_lead} = $full_group;
+
+		}
+
+	    }
+	    
+	}
+
+	
+	# Next up, we'll build up an MSA representing the group alignment
+	my @GroupLeadNums;
+	my @GroupMSAStrs;
+	my $num_groups;
+	my $full_ali_nucls = '';
+	while (my $dce_line = <$DCEFile>) {
+
+	    last if ($dce_line !~ /Groups?/);
+	    
+	    $num_groups = 0;
+	    
+	    while ($dce_line =~ /Groups?\s+(\S+)/) {
+
+		my $full_group_name = $1;
+
+		$full_group_name =~ /^(\d+)/;
+		my $lead_group_num = $1;
+
+		while (length($full_group_name) < $longest_group_name_len) {
+		    $full_group_name = $full_group_name.' ';
+		}
+
+		$dce_line =~ s/\n|\r//g;
+		$dce_line =~ /Groups?\s+$full_group_name    (.*)$/;
+
+		my $ali_str = $1;
+
+		$GroupLeadNums[$num_groups] = $lead_group_num;
+
+		if ($GroupMSAStrs[$num_groups]) {
+		    $GroupMSAStrs[$num_groups] = $GroupMSAStrs[$num_groups].$ali_str;
+		} else {
+		    $GroupMSAStrs[$num_groups] = $ali_str;
+		}
+
+		$num_groups++;
+
+		$dce_line = <$DCEFile>; # Either 'Group' or 'Nucl.s'
+
+	    }
+	    $num_groups++;
+
+	    $dce_line =~ /Nucl\.s\s+(\S+)/;
+	    $full_ali_nucls = $full_ali_nucls.$1;
+
+	    $dce_line = <$DCEFile>; # blank
+	    $dce_line = <$DCEFile>; # Frame 1
+	    $dce_line = <$DCEFile>; # Frame 2
+	    $dce_line = <$DCEFile>; # Frame 3
+	    $dce_line = <$DCEFile>; # blank
+	    $dce_line = <$DCEFile>; # blank
+	    $dce_line = <$DCEFile>; # blank
+
+	}
+
+	# That's it for you, DCE File!
+	close($DCEFile);
+
+	my @FullAliNucls = split(//,$full_ali_nucls);
+	
+	# For each multi-frame group, find the index of the last amino acid before
+	# a long gap (indicating the inserted intron)
+	for (my $i=0; $i<$num_groups; $i++) {
+
+	    my $group_id = $GroupLeadNums[$i];
+	    next if (!$GroupIsMultiFrame{$group_id});
+
+	    my @AliChars = split(//,$GroupMSAStrs[$i]);
+
+	    my $pre_gap_amino_index = 0;
+	    my $num_adjacent_gaps   = 0;
+
+	    # Find the index in the alignment corresponding to the start of the
+	    # big gap (i.e., the intron)
+	    my $char_index = 0;
+	    my $pre_gap_amino_coord;
+	    while ($char_index < scalar(@AliChars) && $num_adjacent_gaps < 4) {
+
+		if ($AliChars[$char_index] =~ /[A-Za-z]/) {
+		    $num_adjacent_gaps = 0;
+		    $pre_gap_amino_index++;
+		    $pre_gap_amino_coord = $char_index;
+		} else {
+		    $num_adjacent_gaps++;
+		}
+
+		$char_index++;
+		
+	    }
+
+	    # Weird if this happens, but better catch...
+	    next if ($char_index == scalar(@AliChars));
+
+	    $pre_gap_amino_index--;
+
+	    $GroupToAli{$group_id} =~ /^([^\&]+)\&([^\&]+)$/;
+	    my $group_prot_ali_str = $1;
+	    my $group_nucl_ali_str = $2;
+
+	    my @GroupAminos = split(//,$group_prot_ali_str);
+	    my @GroupNucls  = split(//,$group_nucl_ali_str);
+
+	    my $amino_index = 0;
+	    my $group_pos = 0;
+	    while ($amino_index < $pre_gap_amino_index) {
+
+		if ($GroupAminos[$group_pos] =~ /[A-Za-z]/) {
+		    $amino_index++;
+		}
+
+		$group_pos++;
+		
+	    }
+
+	    # There should be a splice marker close ahead...
+	    while ($GroupAminos[$group_pos] !~ /\//) {
+		$group_pos++;
+	    }
+
+	    # Great! Now let's just grab the 16 nucl.s in each direction!
+	    my $group_nucls_L = '';
+	    for (my $pos = $group_pos-1; $pos >= 0; $pos--) {
+		if ($GroupNucls[$pos] =~ /[A-Za-z]/) {
+		    $group_nucls_L = $GroupNucls[$pos].$group_nucls_L;
+		    last if (length($group_nucls_L) == 16);
+		}
+	    }
+
+	    my $group_nucls_R = '';
+	    for (my $pos = $group_pos+1; $pos < scalar(@GroupNucls); $pos++) {
+		if ($GroupNucls[$pos] =~ /[A-Za-z]/) {
+		    $group_nucls_R = $group_nucls_R.$GroupNucls[$pos];
+		    last if (length($group_nucls_R) == 16);
+		}
+	    }
+
+
+	    # If we don't have enough nucleotides to be searchable, we'll move
+	    # on with our lives!
+	    my $group_nucls = $group_nucls_L.$group_nucls_R;
+	    next if (length($group_nucls) < 32);
+
+	    # OOOOH LALA!  We've got something cookin'!  Let's really quickly
+	    # build up the sequences that we'll want to report for this group
+	    my $group_name = '>'.$dce_index.'_'.$gene.'_'.$GroupLeaderToFull{$group_id}.'_IntronInsertion';
+
+	    
+	    # The last bit of work we'll need to do is determine nucleotide
+	    # windows for sequences that don't have the "bonus" intron
+
+	    #
+	    # LEFT SIDE OF "INTRON"
+	    #
+
+	    $char_index = $pre_gap_amino_coord + 1; # Last nucl in common codon
+
+	    my $comp_nucls_LL = '';
+	    while (length($comp_nucls_LL) < 16 && $char_index >= 0) {
+
+		if ($FullAliNucls[$char_index] =~ /[A-Za-z]/) {
+		    $comp_nucls_LL = $FullAliNucls[$char_index].$comp_nucls_LL;
+		}
+		$char_index--;
+		
+	    }
+	    
+	    
+	    $char_index = $pre_gap_amino_coord + 2; # First nucl in 'intron'
+
+	    my $comp_nucls_LR = '';
+	    while (length($comp_nucls_LR) < 16 && $char_index < scalar(@FullAliNucls)) {
+
+		if ($FullAliNucls[$char_index] =~ /[A-Za-z]/) {
+		    $comp_nucls_LR = $comp_nucls_LR.$FullAliNucls[$char_index];
+		}
+		$char_index++;
+		
+	    }
+
+	    my $comp_nucls_L = $comp_nucls_LL.$comp_nucls_LR;
+	    
+
+	    #
+	    # RIGHT SIDE OF "INTRON"
+	    #
+
+	    # Walk up to the end of the group of interest's gappy run
+	    my $post_gap_amino_coord = $pre_gap_amino_coord+2;
+
+	    while ($post_gap_amino_coord < scalar(@AliChars) &&
+		   $AliChars[$post_gap_amino_coord] !~ /[A-Za-z]/) {
+		$post_gap_amino_coord++;
+	    }
+	    
+
+	    $char_index = $post_gap_amino_coord - 2; # Last nucl in 'intron'
+	    
+	    my $comp_nucls_RL = '';
+	    while (length($comp_nucls_RL) < 16 && $char_index >= 0) {
+
+		if ($FullAliNucls[$char_index] =~ /[A-Za-z]/) {
+		    $comp_nucls_RL = $FullAliNucls[$char_index].$comp_nucls_RL;
+		}
+		$char_index--;
+		
+	    }
+	    
+	    
+	    $char_index = $post_gap_amino_coord - 1; # First nucl in follow-up exon
+
+	    my $comp_nucls_RR = '';
+	    while (length($comp_nucls_RR) < 16 && $char_index < scalar(@FullAliNucls)) {
+
+		if ($FullAliNucls[$char_index] =~ /[A-Za-z]/) {
+		    $comp_nucls_RR = $comp_nucls_RR.$FullAliNucls[$char_index];
+		}
+		$char_index++;
+		
+	    }
+
+	    my $comp_nucls_R = $comp_nucls_RL.$comp_nucls_RR;
+
+
+	    # GREAT! Name those suckas!
+	    my $comp_nucls_L_name = $group_name;
+	    $comp_nucls_L_name =~ s/IntronInsertion/LeftSpliceSite/;
+	    
+	    my $comp_nucls_R_name = $group_name;
+	    $comp_nucls_R_name =~ s/IntronInsertion/RightSpliceSite/;
+
+
+	    # Time to sing some beautiful songs!!!
+	    open(my $OutFile,'>>',$out_dirname.$species.'.mid-exon-introns.fa')
+		|| die "\n  ERROR:  Failed to open MEI output file ($species)!\n\n";
+
+	    print $OutFile "$group_name\n$group_nucls\n";
+
+	    if (length($comp_nucls_L) == 32) {
+		print $OutFile "$comp_nucls_L_name\n$comp_nucls_L\n";
+	    }
+
+	    if (length($comp_nucls_R) == 32) {
+		print $OutFile "$comp_nucls_R_name\n$comp_nucls_R\n";
+	    }
+
+	    close($OutFile);
+
+	    # Mark it!
+	    $num_outputs++;
+
+	}
+
+    }
+    close($MEIFile);
+
+    if ($num_outputs == 0) { RunSystemCommand("rm -rf \"$out_dirname\""); }
+    
+}
+
+
+
+
 
 
 

@@ -2437,7 +2437,6 @@ sub GenMidExonIntronFastas
 		$dce_line = <$DCEFile>; # Either 'Group' or 'Nucl.s'
 
 	    }
-	    $num_groups++;
 
 	    $dce_line =~ /Nucl\.s\s+(\S+)/;
 	    $full_ali_nucls = $full_ali_nucls.$1;

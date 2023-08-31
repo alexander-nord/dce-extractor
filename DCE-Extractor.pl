@@ -2369,7 +2369,7 @@ sub GenMidExonIntronFastas
 	my $longest_group_name_len = 0;
 	while (my $dce_line = <$DCEFile>) {
 
-	    last if ($dce_line =~ /Overlaid Alignment/);
+	    last if ($dce_line =~ /Overlaid alignment/);
 
 	    if ($dce_line =~ /Groups?\s+(\S+)/) {
 

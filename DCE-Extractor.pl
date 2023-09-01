@@ -2354,8 +2354,9 @@ sub GenMidExonIntronFastas
 	    $protein_ali_str =~ s/\|.*$//;
 	    $nucl_ali_str    =~ s/\|.*$//;
 
-	    $protein_ali_str =~ s/\///g;
-	    $nucl_ali_str    =~ s/\///g;
+	    # We'll definitely want to preserve the splice boundaries!
+	    #$protein_ali_str =~ s/\///g;
+	    #$nucl_ali_str    =~ s/\///g;
 
 	    $GroupToAli{$group_id} = $protein_ali_str.'&'.$nucl_ali_str;
 	    
@@ -2380,7 +2381,7 @@ sub GenMidExonIntronFastas
 		}
 		
 		# Capture the lead group for any multi-frames
-		if ($dce_line =~ /Groups?\s+(\S+)\s+\:\=\s+\S+\s+\[frames/) {
+		if ($dce_line =~ /Groups?\s+(\S+)\s+\:\=\s+\S+\s+\[frames\:/) {
 
 		    my $full_group = $1;
 

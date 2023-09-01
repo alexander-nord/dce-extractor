@@ -2473,12 +2473,18 @@ sub GenMidExonIntronFastas
 
 	    my @AliChars = split(//,$GroupMSAStrs[$i]);
 
-	    my $pre_gap_amino_index = 0;
-	    my $num_adjacent_gaps   = 0;
-
 	    # Find the index in the alignment corresponding to the start of the
 	    # big gap (i.e., the intron)
+
+	    # In case we start off with some gappiness (e.g., alt upstream splice site)
+	    # we don't want to immediately call *that* gap the novel intron
 	    my $char_index = 0;
+	    while ($AliChars[$char_index] !~ /[A-Za-z]/) {
+		$char_index++;
+	    }
+
+	    my $pre_gap_amino_index = 0;
+	    my $num_adjacent_gaps   = 0;
 	    my $pre_gap_amino_coord;
 	    while ($char_index < scalar(@AliChars) && $num_adjacent_gaps < 4) {
 

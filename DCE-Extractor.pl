@@ -2316,8 +2316,9 @@ sub GenMidExonIntronFastas
 	    next if ($dce_line !~ /\> Group (\d+)\:/);
 	    my $group_id = $1;
 
-	    $dce_line = <$DCEFile>; # blank
-	    $dce_line = <$DCEFile>; # Genome Ranges
+	    while ($dce_line !~ /Genome Ranges/) {
+		$dce_line = <$DCEFile>;
+	    }
 	    $dce_line = <$DCEFile>; # blank
 	    $dce_line = <$DCEFile>; # blank
 	    
@@ -2379,7 +2380,7 @@ sub GenMidExonIntronFastas
 		}
 		
 		# Capture the lead group for any multi-frames
-		if ($dce_line !~ /Groups?\s+(\S+)\s+\:\=\s+\S+\s+\[frames/) {
+		if ($dce_line =~ /Groups?\s+(\S+)\s+\:\=\s+\S+\s+\[frames/) {
 
 		    my $full_group = $1;
 

@@ -2503,6 +2503,7 @@ sub GenMidExonIntronFastas
 	    # Weird if this happens, but better catch...
 	    next if ($char_index == scalar(@AliChars));
 
+	    
 	    $pre_gap_amino_index--;
 
 	    $GroupToAli{$group_id} =~ /^([^\&]+)\&([^\&]+)$/;
@@ -2524,10 +2525,26 @@ sub GenMidExonIntronFastas
 		
 	    }
 
-	    # There should be a splice marker close ahead...
-	    while ($GroupAminos[$group_pos] !~ /\//) {
+	    
+            # There should be a splice marker closeby... (in rare cases it can be behind!)
+            my $init_group_pos = $group_pos;
+            while ($group_pos < scalar(@GroupAminos) && $GroupAminos[$group_pos] ne '/') {
 		$group_pos++;
-	    }
+            }
+
+            if ($group_pos == scalar(@GroupAminos)) {
+                $group_pos = $init_group_pos-1;
+                while ($group_pos && $GroupAminos[$group_pos] ne '/') {
+                    $group_pos--;
+                }
+            }
+
+            # This shouldn't ever happen, but doesn't hurt...
+            if ($group_pos == 0) {
+	        print "\n  WARNING:  No internal splice site found when examining $species $gene ($dce_index)\n\n";
+		next;
+            }
+
 
 	    # Great! Now let's just grab the 16 nucl.s in each direction!
 	    my $group_nucls_L = '';

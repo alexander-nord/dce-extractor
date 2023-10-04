@@ -199,7 +199,7 @@ if (scalar(keys %GappyMappingSeqs)) {
 
 # Now, let's make some FASTA files!
 GenStrongWindowFastas($out_dirname);
-GenMidExonIntronFastas($out_dirname);
+GenIntronRetentionFastas($out_dirname);
 
 1;
 

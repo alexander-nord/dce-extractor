@@ -21,9 +21,9 @@ sub ExtractDCEs;
 sub RemoveEmptyColumns;
 sub RecordWindowsToCSV;
 sub VisDualCodingRegion;
-sub CheckForMidExonIntrons;
+sub CheckForIntronRetention;
 sub GenStrongWindowFastas;
-sub GenMidExonIntronFastas;
+sub GenIntronRetentionFastas;
 
 # DEBUGGING OUTPUT
 sub DumpSpeciesGeneData;
@@ -72,8 +72,8 @@ my $num_dces = 0;
 
 my $all_species_dirname = ConfirmDirectory($mirage_results_dirname.'Species-MSAs');
 
-my $mei_fname = $out_dirname.'Mid-Exon-Intron-Warnings.out';
-my $MEIFile = OpenOutputFile($mei_fname);
+my $intron_retention_fname = $out_dirname.'Intron-Retention-Events.out';
+my $IRFile = OpenOutputFile($intron_retention_fname);
 
 my $AllSpeciesDir = OpenDirectory($all_species_dirname);
 while (my $species = readdir($AllSpeciesDir)) {
@@ -130,7 +130,7 @@ while (my $species = readdir($AllSpeciesDir)) {
 	    my $dce_fname = $species_out_dirname.$gene_start_dce.'.'.$gene.'.out';
 
 	    VisDualCodingRegion($dce_fname);
-	    CheckForMidExonIntrons($MEIFile,$dce_fname); # This also records frame num
+	    CheckForIntronRetention($IRFile,$dce_fname); # This also records frame num
 	    RecordWindowsToCSV($SpeciesCSV,$dce_fname);
 
 	}
@@ -151,8 +151,8 @@ while (my $species = readdir($AllSpeciesDir)) {
 }
 closedir($AllSpeciesDir);
 
-close($MEIFile);
-if (!(-s $mei_fname)) { RunSystemCommand("rm $mei_fname"); }
+close($IRFile);
+if (!(-s $intron_retention_fname)) { RunSystemCommand("rm $intron_retention_fname"); }
 
 
 # If we had any gappy mappings (indicating low-quality), report them
@@ -1982,16 +1982,16 @@ sub VisDualCodingRegion
 
 #############################################################################
 #
-#  Function:  CheckForMidExonIntrons
+#  Function:  CheckForIntronRetention
 #
 #  About:  This subroutine checks whether the dual coding region is created
 #          by intron insertion w.r.t. genomic sequence that is exonic in one
 #          of the other sequences (indicating that the reported left/right
 #          window may need adjustment)
 #
-sub CheckForMidExonIntrons
+sub CheckForIntronRetention
 {
-    my $MidExonIntronFile = shift;
+    my $IntronRetentionFile = shift;
     my $dce_filename = shift;
     
     $dce_filename =~ /\/([^\/]+)\/(\d+)\.([^\/]+)\.out$/;
@@ -2099,7 +2099,7 @@ sub CheckForMidExonIntrons
     
     close($InFile);
 
-    print $MidExonIntronFile "$species: $dce_index ($gene)\n"
+    print $IntronRetentionFile "$species: $dce_index ($gene)\n"
 	if ($multi_frame_observed);
 
 
@@ -2155,7 +2155,7 @@ sub CheckForMidExonIntrons
 #  About: This function compiles a FASTA file for each species, containing
 #         the left and/or right windows nucleotide windows.  It only does this
 #         for sequences from DCE indices that are not implicated in either
-#         'Gappy-Alignment-Warnings' or 'Mid-Exon-Intron-Warnings'
+#         'Gappy-Alignment-Warnings' or 'Intron-Retention-Events'
 #
 sub GenStrongWindowFastas
 {
@@ -2178,9 +2178,9 @@ sub GenStrongWindowFastas
     }
 
     # DCE indices where the alt. frame has a funny look...
-    if (-e ($dirname.'Mid-Exon-Intron-Warnings.out')) {
+    if (-e ($dirname.'Intron-Retention-Events.out')) {
 
-	my $InFile = OpenInputFile($dirname.'Mid-Exon-Intron-Warnings.out');
+	my $InFile = OpenInputFile($dirname.'Intron-Retention-Events.out');
 
 	while (my $line = <$InFile>) {
 	    if ($line =~ /\:\s+(\d+)\s+/) {
@@ -2283,22 +2283,22 @@ sub GenStrongWindowFastas
 
 #############################################################################
 #
-#  Function: GenMidExonIntronFastas
+#  Function: GenIntronRetentionFastas
 #
-sub GenMidExonIntronFastas
+sub GenIntronRetentionFastas
 {
     my $result_dirname = shift;
 
-    my $mei_fname = $result_dirname.'Mid-Exon-Intron-Warnings.out';
-    return if (!(-e $mei_fname));
+    my $ir_fname = $result_dirname.'Intron-Retention-Events.out';
+    return if (!(-e $ir_fname));
 
-    my $out_dirname = CreateDirectory($result_dirname.'Mid-Exon-Intron-FASTAs');
+    my $out_dirname = CreateDirectory($result_dirname.'Intron-Retention-FASTAs');
     my $num_outputs = 0;
 
-    my $MEIFile = OpenInputFile($mei_fname);
-    while (my $mei_line = <$MEIFile>) {
+    my $IRFile = OpenInputFile($ir_fname);
+    while (my $ir_line = <$IRFile>) {
 
-	next if ($mei_line !~ /^(\S+)\:\s+(\d+)\s+\((\S+)\)/);
+	next if ($ir_line !~ /^(\S+)\:\s+(\d+)\s+\((\S+)\)/);
 
 	my $species = $1;
 	my $dce_index = $2;
@@ -2660,7 +2660,7 @@ sub GenMidExonIntronFastas
 
 	    # Time to sing some beautiful songs!!!
 	    open(my $OutFile,'>>',$out_dirname.$species.'.mid-exon-introns.fa')
-		|| die "\n  ERROR:  Failed to open MEI output file ($species)!\n\n";
+		|| die "\n  ERROR:  Failed to open IR output file ($species)!\n\n";
 
 	    print $OutFile "$group_name\n$group_nucls\n";
 
@@ -2680,7 +2680,7 @@ sub GenMidExonIntronFastas
 	}
 
     }
-    close($MEIFile);
+    close($IRFile);
 
     if ($num_outputs == 0) { RunSystemCommand("rm -rf \"$out_dirname\""); }
     

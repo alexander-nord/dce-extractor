@@ -522,7 +522,7 @@ sub ExtractDCEs
     
     # We'll go through our MSA sequence-by-sequence looking for
     # 'A's in our AminoStatusMSA
-    for (my $seq_id=1; $seq_id<$num_seqs; $seq_id++) {
+    for (my $seq_id=1; $seq_id<=$num_seqs; $seq_id++) {
 
 	my $msa_pos=1;
 	while ($msa_pos < $msa_len-1) {

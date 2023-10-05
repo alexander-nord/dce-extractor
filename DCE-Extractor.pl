@@ -1328,6 +1328,14 @@ sub RecordWindowsToCSV
     my $line = <$InFile>;
     while ($line !~ /^\s+Percents identity/) {
 
+	# DEBUGGING
+	if (eof($InFile)) {
+	    close($InFile);
+	    print "\n  Unexpected EOF: '$in_filename'\n\n";
+	    return;
+	}
+
+
 	if ($line !~ /\> Group (\d+)/) {
 	    $line = <$InFile>;
 	    next;
@@ -1335,10 +1343,12 @@ sub RecordWindowsToCSV
 	my $group = $1;
 
 	# Advance to the start of this group's alignment visualization
-	$line = <$InFile> while ($line !~ /Protein Seq\./);
+	while ($line !~ /Protein Seq\./) {
+	    $line = <$InFile>;
+	}	
 
 	my $group_nucl_str = '';
-	while ($line =~ /Protein Seq\./) {
+	while (!eof($InFile) && $line =~ /Protein Seq\./) {
 
 	    $line = <$InFile>; # Coding nucleotides
 
@@ -1351,6 +1361,8 @@ sub RecordWindowsToCSV
 	    $line = <$InFile>; # Blank Line 3  *or*  Protein Seq.
 	    
 	}
+	last if (!$group_nucl_str);
+
 
 	my @Nucls = split(//,$group_nucl_str);
 
@@ -1796,7 +1808,7 @@ sub VisDualCodingRegion
 
 	# DEBUGGING
 	if ($GroupMatches[$group_id] + $GroupMismatches[$group_id] == 0) {
-	    print "\n  APPARENT MAPPING ERROR: $fname\n\n";
+	    print "\n  Possible Mapping Error: $fname\n\n";
 	    return;
 	}
 

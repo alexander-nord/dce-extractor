@@ -20,6 +20,7 @@ sub HasDCEs;
 sub ExtractDCEs;
 sub RemoveEmptyColumns;
 sub RecordWindowsToCSV;
+sub RemoveDuplicates;
 sub VisDualCodingRegion;
 sub CheckForIntronRetention;
 sub GenStrongWindowFastas;
@@ -123,6 +124,12 @@ while (my $species = readdir($AllSpeciesDir)) {
 	$num_dces = ExtractDCEs($species_out_dirname,$gene_ali_fname,
 				$gene_map_fname,$genome,$num_dces);
 
+	
+	# We'll do a quick double-check that we aren't doubling-up
+	# any of the outputs
+	$num_dces = RemoveDuplicates($species_out_dirname,$gene_start_dce,$num_dces,$gene);
+	
+	
 	# Record this gene's DCE(s) to our CSV
 	while ($gene_start_dce < $num_dces) {
 
@@ -1529,6 +1536,95 @@ sub RecordWindowsToCSV
     }
     
     close($InFile);
+    
+}
+
+
+
+
+
+
+
+
+#############################################################################
+#
+#  Function:  RemoveDuplicates
+#
+sub RemoveDuplicates
+{
+    
+    my $species_out_dirname = shift;
+    my $gene_start_dce = shift;
+    my $num_dces = shift;
+    my $gene = shift;
+
+    my $num_duplicates = 0;
+
+    my $dce_id = $gene_start_dce+1;
+    while ($dce_id < $num_dces) {
+
+	my $dce_fname = $species_out_dirname.$dce_id.'.'.$gene.'.out';
+	
+	my $comp_dce_id = $dce_id + 1;
+	while ($comp_dce_id <= $num_dces) {
+
+
+	    my $comp_dce_fname = $species_out_dirname.$comp_dce_id.'.'.$gene.'.out';
+
+	    my $diff_cmd = "diff \"$dce_fname\" \"$comp_dce_fname\"";
+	    my $Diff = OpenSystemCommand($diff_cmd);
+	    my $diff_line_count = -4;
+	    while (my $diff_line = <$Diff>) {
+		$diff_line_count++;
+	    }
+	    close($Diff);
+
+
+	    # Is this DCE different?
+	    if ($diff_line_count > 0) {
+		$comp_dce_id++;
+		next;
+	    }
+
+
+	    # NOPE! Bump it, baby!
+	    RunSystemCommand("rm \"$comp_dce_fname\"");
+
+
+	    # Do we need to fill its place?
+	    if ($comp_dce_id < $num_dces) {
+
+		my $moved_dce_fname = $species_out_dirname.$num_dces.'.'.$gene.'.out';
+
+		my $ReadFile  = OpenInputFile($moved_dce_fname);
+		my $WriteFile = OpenOutputFile($comp_dce_fname);
+
+		while (my $line = <$ReadFile>) {
+
+		    $line =~ s/\n|\r//g;
+		    if ($line =~ /^DCE Index\s+\: $num_dces\s*$/) {
+			$line =~ s/\: $num_dces/\: $comp_dce_id/;
+		    }
+
+		    print $WriteFile "$line\n";
+		    
+		}
+
+		close($ReadFile);
+		close($WriteFile);
+
+		RunSystemCommand("rm \"$moved_dce_fname\"");
+		
+	    }
+	    $num_dces--;
+
+	}
+
+	$dce_id++;
+	
+    }
+
+    return $num_dces;
     
 }
 
